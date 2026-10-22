@@ -5,11 +5,23 @@
 
 static void (*I2C_recv)(uint8_t);
 static void (*I2C_req)();
+static void (*I2C_transaction_end)();
+static void (*I2C_transaction_abort)();
 
 void I2C_setCallbacks(void (*recv)(uint8_t), void (*req)())
 {
   I2C_recv = recv;
   I2C_req = req;
+}
+
+void I2C_setTransactionEndCallback(void (*end)())
+{
+  I2C_transaction_end = end;
+}
+
+void I2C_setTransactionAbortCallback(void (*abort)())
+{
+  I2C_transaction_abort = abort;
 }
 
 void I2C_init(uint8_t address)
@@ -66,11 +78,21 @@ ISR(TWI_vect)
     case TW_SR_DATA_NACK:
     case TW_ST_DATA_NACK:
     case TW_ST_LAST_DATA:
-      /* The next transaction starts with a fresh address phase. */
+      if( I2C_transaction_end != 0 )
+      {
+        I2C_transaction_end();
+      }
       break;
 
     case TW_BUS_ERROR:
       /* Recover from an illegal START/STOP condition on the bus. */
+      if( I2C_transaction_abort != 0 )
+      {
+        /* The current transaction is no longer trustworthy.  Give the
+         * application a chance to discard any partial protocol state before
+         * the TWI peripheral is re-enabled below. */
+        I2C_transaction_abort();
+      }
       TWCR = 0;
       break;
 
